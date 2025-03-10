@@ -1,8 +1,8 @@
 name:                haskell-eval-server
 version:             0.1.0.0
-github:              "githubuser/haskell-eval-server"
+github:              "iwashis/haskell-eval-server"
 license:             BSD-3-Clause
-author:              "Author name here"
+author:              "Tomasz Brengos"
 maintainer:          "example@example.com"
 copyright:           "2025 Author name here"
 
