@@ -6,9 +6,6 @@ author:              "Tomasz Brengos"
 maintainer:          "example@example.com"
 copyright:           "2025 Author name here"
 
-extra-source-files:
-- README.md
-- CHANGELOG.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -23,7 +20,6 @@ dependencies:
 - base >= 4.7 && < 5
 - network
 - time 
-- bytestring
 - containers
 - hint >= 0.9.0
 - exceptions
@@ -32,6 +28,7 @@ dependencies:
 - ghc-paths
 - directory
 - process
+- bytestring
 
 
 ghc-options:
@@ -52,17 +49,6 @@ executables:
   haskell-eval-server-exe:
     main:                Main.hs
     source-dirs:         app
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - haskell-eval-server
-
-tests:
-  haskell-eval-server-test:
-    main:                Spec.hs
-    source-dirs:         test
     ghc-options:
     - -threaded
     - -rtsopts
