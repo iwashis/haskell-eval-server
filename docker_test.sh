@@ -43,7 +43,7 @@ echo "----------------------------------------"
 # Send the test file to the server
 echo -e "${YELLOW}Sending program to the evaluation server...${NC}"
 echo "----------------------------------------"
-RESULT=$(cat test_fibonacci.hs | nc localhost 3000)
+RESULT=$(cat test_fibonacci.hs | nc localhost 8080)
 echo -e "${GREEN}Result:${NC}"
 echo "$RESULT"
 echo "----------------------------------------"
