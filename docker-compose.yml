@@ -1,0 +1,27 @@
+services:
+  haskell-eval:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${HASKELL_EVAL_PORT:-3000}:3000"
+    container_name: haskell-eval-server
+    # Resource limitations
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-0.50}"     # Limit to 50% of a CPU core
+          memory: "${MEMORY_LIMIT:-256M}"     # Limit to 256MB of RAM
+    restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined    # Using unconfined instead of default profile
+      - no-new-privileges:true
+    # Additional security measures
+    cap_drop:
+      - ALL                # Drop all capabilities
+    cap_add:
+      - NET_BIND_SERVICE   # Only add capability to bind to ports
+    # Use only tmpfs instead of both volume and tmpfs
+    tmpfs:
+      - /tmp/haskell-eval:size=${TMP_SIZE:-64M},exec # Temporary filesystem for evaluations
+    working_dir: /opt/haskell-eval-server

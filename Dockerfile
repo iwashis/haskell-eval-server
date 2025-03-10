@@ -1,15 +1,6 @@
 FROM haskell:9.2.8-slim as builder
 
-# Set working directory to match your project structure
-WORKDIR /opt/haskell-eval-server
-
-# Copy only the files needed for stack dependencies
-COPY stack.yaml stack.yaml.lock* package.yaml ./
-
-# Create project structure
-RUN mkdir -p app src
-
-# Install system dependencies needed for GHC and Stack
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -24,19 +15,32 @@ RUN apt-get update && \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Force using system GHC to avoid downloading a specific version
+# Set working directory
+WORKDIR /opt/haskell-eval-server
+
+# Create project structure
+RUN mkdir -p app src
+
+# Set stack to use system GHC
 RUN stack config set system-ghc --global true
 
-# Build dependencies only (this layer is cached)
+# Copy configuration files first (for better caching)
+COPY stack.yaml package.yaml ./
+COPY README.md ./
+
+# Build dependencies
 RUN stack build --only-dependencies --system-ghc
 
-# Copy source code with the correct project structure
+# Copy source code
 COPY app app/
 COPY src src/
-COPY LICENSE README.md ./
 
-# Build the actual application
-RUN stack build --system-ghc --copy-bins --ghc-options="-O2"
+# Build the application
+RUN stack build --system-ghc --ghc-options="-O2"
+
+# Copy the binary to a known location
+RUN mkdir -p /opt/bin && \
+    find $(stack path --local-install-root)/bin -name "haskell-eval-server" -type f -exec cp {} /opt/bin/ \;
 
 # Create a smaller runtime image
 FROM debian:bullseye-slim as runtime
@@ -50,21 +54,21 @@ RUN apt-get update && \
     ghc \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for running the application
+# Create a non-root user
 RUN useradd -m haskell-eval
 
+# Create workdir and tmp directory
 WORKDIR /opt/haskell-eval-server
+RUN mkdir -p /tmp/haskell-eval && \
+    chown -R haskell-eval:haskell-eval /tmp/haskell-eval
 
-# Copy the compiled executable
-COPY --from=builder /root/.local/bin/haskell-eval-server /opt/haskell-eval-server/
+# Copy the compiled executable with the correct name
+COPY --from=builder /opt/haskell-eval-server/.stack-work/install/aarch64-linux/*/9.2.8/bin/haskell-eval-server-exe /opt/haskell-eval-server/haskell-eval-server
+
 
 # Set ownership and permissions
 RUN chown -R haskell-eval:haskell-eval /opt/haskell-eval-server && \
     chmod +x /opt/haskell-eval-server/haskell-eval-server
-
-# Needed for temporary file operations
-RUN mkdir -p /tmp/haskell-eval && \
-    chown -R haskell-eval:haskell-eval /tmp/haskell-eval
 
 # Switch to non-root user
 USER haskell-eval
