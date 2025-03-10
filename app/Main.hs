@@ -4,16 +4,15 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isSpace)
 import Data.Time (getCurrentTime, diffUTCTime)
-import Language.Haskell.Interpreter (InterpreterError(..), runInterpreter, setImports, interpret, as, liftIO)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.IO (hPutStrLn, stderr, hClose)
 import System.Process (readProcessWithExitCode)
 import System.Exit (ExitCode(..))
-import System.Directory (removeFile, doesFileExist)
 import System.IO.Temp (withSystemTempFile)
+import Data.List (isPrefixOf, intercalate)
+import Data.Maybe (mapMaybe)
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
@@ -65,41 +64,105 @@ handleConnection conn = do
       -- Close the connection
       close conn
 
--- Evaluate Haskell code using GHC directly instead of hint
+-- In your evaluateWithGHC function or similar
+
+-- Whitelist of allowed modules
+allowedModules :: [String]
+allowedModules = [
+  -- Basic Prelude modules
+  "Prelude",
+  "Data.List",
+  "Data.Maybe",
+  "Data.Char",
+  "Data.Either",
+  "Data.Tuple",
+  "Data.Function",
+  "Data.Ord",
+  "Control.Applicative",
+  "Control.Monad",
+  "Text.Show",
+  "Data.String",
+  
+  -- Useful data structures
+  "Data.Map",
+  "Data.Set",
+  "Data.Sequence",
+  "Data.Array",
+  "Data.IntMap",
+  "Data.IntSet",
+  "Data.Tree",
+  
+  -- Text processing
+  "Data.Text",
+  "Data.ByteString",
+  
+  -- Safe math operations
+  "Numeric",
+  "Data.Complex",
+  "Data.Fixed",
+  "Data.Ratio"
+  ]
+
+-- Function to scan code for import statements and validate them
+validateImports :: String -> Either String String
+validateImports code = 
+  let importLines = filter (isPrefixOf "import ") (lines code)
+      extractModuleName line = 
+        case words line of
+          ("import":"qualified":modName:_) -> Just modName
+          ("import":modName:_) -> Just modName
+          _ -> Nothing
+      importedModules = mapMaybe extractModuleName importLines
+      disallowedModules = filter (`notElem` allowedModules) importedModules
+  in if null disallowedModules
+     then Right code
+     else Left $ "Error: Use of restricted modules: " ++ intercalate ", " disallowedModules
+
+-- Modify your evaluateWithGHC function to use the validation
 evaluateWithGHC :: String -> IO String
 evaluateWithGHC code = do
   putStrLn "Starting evaluation with GHC..."
   startTime <- getCurrentTime
   
-  -- Create a temporary file with the Haskell code
-  result <- withSystemTempFile "eval.hs" $ \filePath handle -> do
-    -- Write the code to the file
-    hPutStrLn handle "module Main where"
-    hPutStrLn handle ""
-    hPutStrLn handle code
-    hPutStrLn handle ""
-    hPutStrLn handle "-- End of user code"
-    
-    -- Close the file handle
-    hClose handle
-    
-    -- Print the file content for debugging
-    fileContent <- readFile filePath
-    putStrLn "File content:"
-    putStrLn fileContent
-    
-    -- Compile and run with GHC
-    (exitCode, stdout, stderr) <- readProcessWithExitCode "runghc" [filePath] ""
-    
-    return $ case exitCode of
-      ExitSuccess -> stdout
-      ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr
+  -- Validate imports before evaluation
+  case validateImports code of
+    Left errorMsg -> return errorMsg
+    Right validCode -> continue
 
-  endTime <- getCurrentTime
-  let duration = diffUTCTime endTime startTime
-  putStrLn $ "Evaluation completed in " ++ show duration
+  where 
+    continue = do
+      putStrLn "Starting evaluation with GHC..."
+      startTime <- getCurrentTime
+      
+      -- Create a temporary file with the Haskell code
+      result <- withSystemTempFile "eval.hs" $ \filePath handle -> do
+        -- Write the code to the file
+        hPutStrLn handle "module Main where"
+        hPutStrLn handle ""
+        hPutStrLn handle code
+        hPutStrLn handle ""
+        hPutStrLn handle "-- End of user code"
+        
+        -- Close the file handle
+        hClose handle
+        
+        -- Print the file content for debugging
+        fileContent <- readFile filePath
+        putStrLn "File content:"
+        putStrLn fileContent
+        
+        -- Compile and run with GHC
+        (exitCode, stdout, stderr) <- readProcessWithExitCode "runghc" [filePath] ""
+        
+        return $ case exitCode of
+          ExitSuccess -> stdout
+          ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr
 
-  return result
+      endTime <- getCurrentTime
+      let duration = diffUTCTime endTime startTime
+      putStrLn $ "Evaluation completed in " ++ show duration
+
+      return result
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
