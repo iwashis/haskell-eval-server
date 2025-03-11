@@ -21,8 +21,8 @@ import System.Timeout (timeout)
 maxResponseSize :: Int
 maxResponseSize = 1024 * 1024 -- 1 MB
 
-maxCharInputSize :: Int
-maxCharInputSize = 1024
+maxInputSize :: Int
+maxInputSize = 1024 * 1024
 
 -- Timeout in seconds:
 tout :: Int
@@ -112,10 +112,13 @@ allowedModules =
     , "Data.Ratio"
     ]
 
+-- Validate ByteString input size directly
 validateInputSize :: String -> Either String String
 validateInputSize code
-    | length code > maxCharInputSize = Left $ "Error: Input size exceeds " ++ show maxCharInputSize ++ " characters."
+    | inputSize > maxInputSize = Left $ "Error: Input size exceeds " ++ show maxInputSize ++ " bytes (current size: " ++ show inputSize ++ " bytes)."
     | otherwise = Right code
+  where
+    inputSize = BS.length (BS.pack code)
 
 -- Function to scan code for import statements and validate them
 validateImports :: String -> Either String String
