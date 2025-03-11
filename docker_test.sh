@@ -25,9 +25,10 @@ echo -e "${YELLOW}Creating test Haskell program...${NC}"
 cat > test_fibonacci.hs << 'EOF'
 -- Fibonacci function
 fibonacci :: Int -> Int
-fibonacci 0 = 0
-fibonacci 1 = 1
-fibonacci n = fibonacci (n-1) + fibonacci (n-2)
+fibonacci n = go 0 1 n
+  where
+    go a b 0 = a 
+    go a b n = go b (a+b) (n-1) 
 
 -- Main function to print Fibonacci sequence
 main = do
