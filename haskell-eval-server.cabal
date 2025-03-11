@@ -36,6 +36,7 @@ library
     , containers
     , directory
     , exceptions
+    , filepath
     , ghc
     , ghc-paths
     , hint >=0.9.0
@@ -60,6 +61,7 @@ executable haskell-eval-server-exe
     , containers
     , directory
     , exceptions
+    , filepath
     , ghc
     , ghc-paths
     , haskell-eval-server

@@ -1,19 +1,21 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (SomeException, catch)
+import Control.Exception (SomeException, catch, bracket, finally, try, onException)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
 import Data.Time (getCurrentTime, diffUTCTime)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
-import System.IO (hPutStrLn, stderr, hClose)
-import System.Process (readProcessWithExitCode)
+import System.IO (hPutStrLn, stderr, hClose, openFile, IOMode(WriteMode), hGetContents)
+import System.Process
 import System.Exit (ExitCode(..))
-import System.IO.Temp (withSystemTempFile)
+import System.IO.Temp (withSystemTempFile, withSystemTempDirectory)
 import Data.List (isPrefixOf, intercalate)
 import Data.Maybe (mapMaybe)
-import System.Timeout (timeout)  -- Add this import
+import System.Timeout (timeout)
+import System.Directory (removeFile, removeDirectoryRecursive) 
+import System.FilePath (combine)
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
@@ -50,10 +52,10 @@ handleConnection conn = do
     then return ()
     else do
       let haskellCode = BS.unpack msg
-      putStrLn "Received code for evaluation:"
-      putStrLn "----------------------------------------"
+      putStrLn $ "Received code for evaluation:"
+      putStrLn $ "----------------------------------------"
       putStrLn haskellCode
-      putStrLn "----------------------------------------"
+      putStrLn $ "----------------------------------------"
       
       -- Evaluate the Haskell code using GHC directly (not hint)
       result <- evaluateWithGHC haskellCode
@@ -68,8 +70,6 @@ handleConnection conn = do
       
       -- Close the connection
       close conn
-
--- In your evaluateWithGHC function or similar
 
 -- Whitelist of allowed modules
 allowedModules :: [String]
@@ -123,7 +123,7 @@ validateImports code =
      then Right code
      else Left $ "Error: Use of restricted modules: " ++ intercalate ", " disallowedModules
 
--- Modify your evaluateWithGHC function to use the validation
+-- Modified evaluateWithGHC function with timeout and cleanup
 evaluateWithGHC :: String -> IO String
 evaluateWithGHC code = do
   putStrLn "Starting evaluation with GHC..."
@@ -144,35 +144,49 @@ evaluateWithGHC code = do
       putStrLn "Starting evaluation with GHC..."
       startTime <- getCurrentTime
       
-      -- Create a temporary file with the Haskell code
-      result <- withSystemTempFile "eval.hs" $ \filePath handle -> do
-        -- Write the code to the file
-        hPutStrLn handle "module Main where"
-        hPutStrLn handle ""
-        hPutStrLn handle validCode
-        hPutStrLn handle ""
-        hPutStrLn handle "-- End of user code"
+      -- Create a temporary directory for all GHC-related files
+      withSystemTempDirectory "eval_dir" $ \tempDir -> do
+        let filePath = tempDir `combine` "eval.hs"
         
-        -- Close the file handle
-        hClose handle
+        -- Create and write to the file
+        bracket
+          (openFile filePath WriteMode)
+          hClose
+          (\handle -> do
+            hPutStrLn handle "module Main where"
+            hPutStrLn handle ""
+            hPutStrLn handle validCode
+            hPutStrLn handle ""
+            hPutStrLn handle "-- End of user code")
         
         -- Print the file content for debugging
         fileContent <- readFile filePath
         putStrLn "File content:"
         putStrLn fileContent
         
-        -- Compile and run with GHC
-        (exitCode, stdout, stderr) <- readProcessWithExitCode "runghc" [filePath] ""
+        -- Use readProcessWithExitCode but within a timeout context
+        let runghcCmd = "cd " ++ tempDir ++ " && runghc " ++ filePath
+        result <- bracket
+          -- Setup: Run the command
+          (do
+            putStrLn $ "Running command: " ++ runghcCmd
+            -- Use shell command instead of createProcess
+            (exitCode, stdout, stderr) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
+            return (exitCode, stdout, stderr))
+          
+          -- Cleanup (nothing to do as process has completed)
+          (\_ -> return ())
+          
+          -- Actual work
+          (\(exitCode, stdout, stderr) -> do
+            -- Return appropriate result
+            return $ case exitCode of
+              ExitSuccess -> stdout
+              ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr)
         
-        return $ case exitCode of
-          ExitSuccess -> stdout
-          ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr
-
-      endTime <- getCurrentTime
-      let duration = diffUTCTime endTime startTime
-      putStrLn $ "Evaluation completed in " ++ show duration
-
-      return result
+        -- Directory will be automatically cleaned up
+        putStrLn $ "Cleaning up temporary directory: " ++ tempDir
+        return result
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
