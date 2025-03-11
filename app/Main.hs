@@ -13,10 +13,15 @@ import System.Exit (ExitCode(..))
 import System.IO.Temp (withSystemTempFile)
 import Data.List (isPrefixOf, intercalate)
 import Data.Maybe (mapMaybe)
+import System.Timeout (timeout)  -- Add this import
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
 maxResponseSize = 1024 * 1024  -- 1 MB
+
+-- Timeout in microseconds (5 seconds)
+evaluationTimeout :: Int
+evaluationTimeout = 5 * 1000000  -- 5 seconds
 
 main :: IO ()
 main = do
@@ -45,10 +50,10 @@ handleConnection conn = do
     then return ()
     else do
       let haskellCode = BS.unpack msg
-      putStrLn $ "Received code for evaluation:"
-      putStrLn $ "----------------------------------------"
+      putStrLn "Received code for evaluation:"
+      putStrLn "----------------------------------------"
       putStrLn haskellCode
-      putStrLn $ "----------------------------------------"
+      putStrLn "----------------------------------------"
       
       -- Evaluate the Haskell code using GHC directly (not hint)
       result <- evaluateWithGHC haskellCode
@@ -127,10 +132,15 @@ evaluateWithGHC code = do
   -- Validate imports before evaluation
   case validateImports code of
     Left errorMsg -> return errorMsg
-    Right validCode -> continue
+    Right validCode -> do
+      -- Apply timeout to the evaluation process
+      maybeResult <- timeout evaluationTimeout (evaluate validCode)
+      case maybeResult of
+        Nothing -> return "Error: Evaluation timed out after 5 seconds"
+        Just result -> return result
 
   where 
-    continue = do
+    evaluate validCode = do
       putStrLn "Starting evaluation with GHC..."
       startTime <- getCurrentTime
       
@@ -139,7 +149,7 @@ evaluateWithGHC code = do
         -- Write the code to the file
         hPutStrLn handle "module Main where"
         hPutStrLn handle ""
-        hPutStrLn handle code
+        hPutStrLn handle validCode
         hPutStrLn handle ""
         hPutStrLn handle "-- End of user code"
         
@@ -170,4 +180,3 @@ handleException conn addr e = do
   hPutStrLn stderr $ "Error handling connection from " ++ show addr ++ ": " ++ show e
   sendAll conn $ BS.pack $ "Server error: " ++ show e
   close conn
-
