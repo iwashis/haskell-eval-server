@@ -21,9 +21,13 @@ import System.FilePath (combine)
 maxResponseSize :: Int
 maxResponseSize = 1024 * 1024  -- 1 MB
 
--- Timeout in microseconds (5 seconds)
+-- Timeout in seconds:
+timeout :: Int 
+timeout = 10 
+
+-- timeout in microseconds:
 evaluationTimeout :: Int
-evaluationTimeout = 5 * 1000000  -- 5 seconds
+evaluationTimeout = timeout * 1000000 
 
 main :: IO ()
 main = do
@@ -52,10 +56,10 @@ handleConnection conn = do
     then return ()
     else do
       let haskellCode = BS.unpack msg
-      putStrLn $ "Received code for evaluation:"
-      putStrLn $ "----------------------------------------"
+      putStrLn "Received code for evaluation:"
+      putStrLn "----------------------------------------"
       putStrLn haskellCode
-      putStrLn $ "----------------------------------------"
+      putStrLn "----------------------------------------"
       
       -- Evaluate the Haskell code using GHC directly (not hint)
       result <- evaluateWithGHC haskellCode
