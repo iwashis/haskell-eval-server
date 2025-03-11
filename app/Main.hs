@@ -127,7 +127,8 @@ validateImports code =
      then Right code
      else Left $ "Error: Use of restricted modules: " ++ intercalate ", " disallowedModules
 
--- Modified evaluateWithGHC function with timeout and cleanup
+
+-- Modified evaluateWithGHC function with robust cleanup handling
 evaluateWithGHC :: String -> IO String
 evaluateWithGHC code = do
   putStrLn "Starting evaluation with GHC..."
@@ -137,18 +138,8 @@ evaluateWithGHC code = do
   case validateImports code of
     Left errorMsg -> return errorMsg
     Right validCode -> do
-      -- Apply timeout to the evaluation process
-      maybeResult <- timeout evaluationTimeout (evaluate validCode)
-      case maybeResult of
-        Nothing -> return $ "Error: Evaluation timed out after " ++ show tout ++ " seconds"
-        Just result -> return result
-
-  where 
-    evaluate validCode = do
-      putStrLn "Starting evaluation with GHC..."
-      startTime <- getCurrentTime
-      
-      -- Create a temporary directory for all GHC-related files
+      -- Create a temporary directory outside the timeout scope
+      -- so cleanup will happen even if evaluation times out
       withSystemTempDirectory "eval_dir" $ \tempDir -> do
         let filePath = tempDir `combine` "eval.hs"
         
@@ -168,29 +159,23 @@ evaluateWithGHC code = do
         putStrLn "File content:"
         putStrLn fileContent
         
-        -- Use readProcessWithExitCode but within a timeout context
-        let runghcCmd = "cd " ++ tempDir ++ " && runghc " ++ filePath
-        result <- bracket
-          -- Setup: Run the command
-          (do
-            putStrLn $ "Running command: " ++ runghcCmd
-            -- Use shell command instead of createProcess
-            (exitCode, stdout, stderr) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
-            return (exitCode, stdout, stderr))
+        -- Only apply timeout to the actual evaluation, not to the directory creation or cleanup
+        evalResult <- timeout evaluationTimeout $ do
+          -- Use readProcessWithExitCode
+          let runghcCmd = "cd " ++ tempDir ++ " && runghc " ++ filePath
+          putStrLn $ "Running command: " ++ runghcCmd
+          -- Use shell command instead of createProcess
+          (exitCode, stdout, stderr) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
           
-          -- Cleanup (nothing to do as process has completed)
-          (\_ -> return ())
-          
-          -- Actual work
-          (\(exitCode, stdout, stderr) -> do
-            -- Return appropriate result
-            return $ case exitCode of
-              ExitSuccess -> stdout
-              ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr)
+          -- Return appropriate result based on exit code
+          return $ case exitCode of
+            ExitSuccess -> stdout
+            ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr
         
-        -- Directory will be automatically cleaned up
-        putStrLn $ "Cleaning up temporary directory: " ++ tempDir
-        return result
+        -- Handle the timeout case outside the timeout block
+        case evalResult of
+          Nothing -> return $ "Error: Evaluation timed out after " ++ show tout ++ " seconds"
+          Just result -> return result
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
