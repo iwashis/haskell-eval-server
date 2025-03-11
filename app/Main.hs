@@ -22,12 +22,12 @@ maxResponseSize :: Int
 maxResponseSize = 1024 * 1024  -- 1 MB
 
 -- Timeout in seconds:
-timeout :: Int 
-timeout = 10 
+tout :: Int 
+tout = 10 
 
 -- timeout in microseconds:
 evaluationTimeout :: Int
-evaluationTimeout = timeout * 1000000 
+evaluationTimeout = tout * 1000000 
 
 main :: IO ()
 main = do
@@ -140,7 +140,7 @@ evaluateWithGHC code = do
       -- Apply timeout to the evaluation process
       maybeResult <- timeout evaluationTimeout (evaluate validCode)
       case maybeResult of
-        Nothing -> return "Error: Evaluation timed out after 5 seconds"
+        Nothing -> return $ "Error: Evaluation timed out after " ++ show tout ++ " seconds"
         Just result -> return result
 
   where 

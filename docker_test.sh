@@ -32,7 +32,7 @@ fibonacci n = fibonacci (n-1) + fibonacci (n-2)
 -- Main function to print Fibonacci sequence
 main = do
   putStrLn "Fibonacci Sequence (0-10):"
-  putStrLn $ show [fibonacci n | n <- [0..10]]
+  putStrLn $ show [fibonacci n | n <- [0..100]]
 EOF
 
 echo -e "${GREEN}Test program created:${NC}"
