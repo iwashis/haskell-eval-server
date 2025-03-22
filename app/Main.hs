@@ -85,6 +85,7 @@ evaluateWithGHC code = do
             -- so cleanup will happen even if evaluation times out
             withSystemTempDirectory "eval_dir" $ \tempDir -> do
                 let filePath = tempDir `combine` "eval.hs"
+                let wrapperScript = tempDir `combine` "run_eval.sh"
 
                 -- Create and write to the file
                 bracket
@@ -97,6 +98,24 @@ evaluateWithGHC code = do
                         hPutStrLn handle ""
                         hPutStrLn handle "-- End of user code"
                     )
+                -- Create a wrapper script with restrictions
+                bracket
+                    (openFile wrapperScript WriteMode)
+                    hClose
+                    ( \handle -> do
+                        hPutStrLn handle "#!/bin/sh"
+                        hPutStrLn handle $ "cd " ++ tempDir
+                        -- Use ulimit to restrict resources
+                        hPutStrLn handle "ulimit -f 0       # No file creation (0 blocks)"
+                        hPutStrLn handle "ulimit -n 32      # Limited file descriptors"
+                        -- hPutStrLn handle "ulimit -v 256000  # 500MB virtual memory limit"
+                        -- hPutStrLn handle $ "ulimit -t " ++ show tout ++ "  # CPU time limit"
+                        hPutStrLn handle "# Run with no write access to anything except stdout/stderr"
+                        hPutStrLn handle $ "runghc " ++ filePath
+                    )
+
+                -- Make the wrapper script executable
+                _ <- system $ "chmod +x " ++ wrapperScript
 
                 -- Print the file content for debugging
                 fileContent <- readFile filePath
@@ -105,11 +124,11 @@ evaluateWithGHC code = do
 
                 -- Only apply timeout to the actual evaluation, not to the directory creation or cleanup
                 evalResult <- timeout evaluationTimeout $ do
-                    -- Use readProcessWithExitCode
-                    let runghcCmd = "cd " ++ tempDir ++ " && runghc " ++ filePath
-                    putStrLn $ "Running command: " ++ runghcCmd
+                    scriptContent <- readFile wrapperScript
+                    putStrLn "Running wrapper script: "
+                    putStrLn scriptContent
                     -- Use shell command instead of createProcess
-                    (exitCode, stdout, stder) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
+                    (exitCode, stdout, stder) <- readProcessWithExitCode wrapperScript [] ""
 
                     -- Return appropriate result based on exit code
                     return $ case exitCode of
