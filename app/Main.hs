@@ -104,12 +104,12 @@ evaluateWithGHC code = do
                     hClose
                     ( \handle -> do
                         hPutStrLn handle "#!/bin/sh"
+                        hPutStrLn handle $ "# Set TMPDIR to control where GHC creates temporary files"
+                        hPutStrLn handle $ "export TMPDIR=\"" ++ tempDir ++ "\""
                         hPutStrLn handle $ "cd " ++ tempDir
                         -- Use ulimit to restrict resources
                         hPutStrLn handle "ulimit -f 0       # No file creation (0 blocks)"
                         hPutStrLn handle "ulimit -n 32      # Limited file descriptors"
-                        -- hPutStrLn handle "ulimit -v 256000  # 500MB virtual memory limit"
-                        -- hPutStrLn handle $ "ulimit -t " ++ show tout ++ "  # CPU time limit"
                         hPutStrLn handle "# Run with no write access to anything except stdout/stderr"
                         hPutStrLn handle $ "runghc " ++ filePath
                     )
