@@ -138,7 +138,6 @@ validateImports code =
 evaluateWithGHC :: String -> IO String
 evaluateWithGHC code = do
     putStrLn "Starting evaluation with GHC..."
-    startTime <- getCurrentTime
 
     -- Validate imports before evaluation
     case validateImports code >>= validateInputSize of
@@ -172,12 +171,12 @@ evaluateWithGHC code = do
                     let runghcCmd = "cd " ++ tempDir ++ " && runghc " ++ filePath
                     putStrLn $ "Running command: " ++ runghcCmd
                     -- Use shell command instead of createProcess
-                    (exitCode, stdout, stderr) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
+                    (exitCode, stdout, stder) <- readProcessWithExitCode "sh" ["-c", runghcCmd] ""
 
                     -- Return appropriate result based on exit code
                     return $ case exitCode of
                         ExitSuccess -> stdout
-                        ExitFailure code -> "Error (code " ++ show code ++ "): " ++ stderr
+                        ExitFailure c -> "Error (code " ++ show c ++ "): " ++ stder
 
                 -- Handle the timeout case outside the timeout block
                 case evalResult of
