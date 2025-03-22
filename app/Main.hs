@@ -6,7 +6,6 @@ import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (mapMaybe)
-import Data.Time (getCurrentTime)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Exit (ExitCode (..))
