@@ -1,19 +1,18 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (SomeException, bracket, catch, finally, onException, try)
+import Control.Exception (SomeException, bracket, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (mapMaybe)
-import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Time (getCurrentTime)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
-import System.Directory (removeDirectoryRecursive, removeFile)
 import System.Exit (ExitCode (..))
 import System.FilePath (combine)
-import System.IO (IOMode (WriteMode), hClose, hGetContents, hPutStrLn, openFile, stderr)
-import System.IO.Temp (withSystemTempDirectory, withSystemTempFile)
+import System.IO (IOMode (WriteMode), hClose, hPutStrLn, openFile, stderr)
+import System.IO.Temp (withSystemTempDirectory)
 import System.Process
 import System.Timeout (timeout)
 
