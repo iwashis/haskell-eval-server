@@ -4,8 +4,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, bracket, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
-import Data.List (intercalate, isPrefixOf)
-import Data.Maybe (mapMaybe)
+import FileSecurityValidator (validateImports, validateInputSize, validateNoFileOps)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Exit (ExitCode (..))
@@ -18,11 +17,8 @@ import System.Timeout (timeout)
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
 maxResponseSize = 1024 * 1024 -- 1 MB
-
-maxInputSize :: Int
-maxInputSize = 1024 * 1024
-
 -- Timeout in seconds:
+
 tout :: Int
 tout = 10
 
@@ -76,70 +72,13 @@ handleConnection conn = do
             -- Close the connection
             close conn
 
--- Whitelist of allowed modules
-allowedModules :: [String]
-allowedModules =
-    [ -- Basic Prelude modules
-      "Prelude"
-    , "Data.List"
-    , "Data.Maybe"
-    , "Data.Char"
-    , "Data.Either"
-    , "Data.Tuple"
-    , "Data.Function"
-    , "Data.Ord"
-    , "Control.Applicative"
-    , "Control.Monad"
-    , "Text.Show"
-    , "Data.String"
-    , -- Useful data structures
-      "Data.Map"
-    , "Data.Set"
-    , "Data.Sequence"
-    , "Data.Array"
-    , "Data.IntMap"
-    , "Data.IntSet"
-    , "Data.Tree"
-    , -- Text processing
-      "Data.Text"
-    , "Data.ByteString"
-    , -- Safe math operations
-      "Numeric"
-    , "Data.Complex"
-    , "Data.Fixed"
-    , "Data.Ratio"
-    ]
-
--- Validate ByteString input size directly
-validateInputSize :: String -> Either String String
-validateInputSize code
-    | inputSize > maxInputSize = Left $ "Error: Input size exceeds " ++ show maxInputSize ++ " bytes (current size: " ++ show inputSize ++ " bytes)."
-    | otherwise = Right code
-  where
-    inputSize = BS.length (BS.pack code)
-
--- Function to scan code for import statements and validate them
-validateImports :: String -> Either String String
-validateImports code =
-    let importLines = filter (isPrefixOf "import ") (lines code)
-        extractModuleName line =
-            case words line of
-                ("import" : "qualified" : modName : _) -> Just modName
-                ("import" : modName : _) -> Just modName
-                _ -> Nothing
-        importedModules = mapMaybe extractModuleName importLines
-        disallowedModules = filter (`notElem` allowedModules) importedModules
-     in if null disallowedModules
-            then Right code
-            else Left $ "Error: Use of restricted modules: " ++ intercalate ", " disallowedModules
-
 -- Modified evaluateWithGHC function with robust cleanup handling
 evaluateWithGHC :: String -> IO String
 evaluateWithGHC code = do
     putStrLn "Starting evaluation with GHC..."
 
     -- Validate imports before evaluation
-    case validateImports code >>= validateInputSize of
+    case validateImports code >>= validateInputSize >>= validateNoFileOps of
         Left errorMsg -> return errorMsg
         Right validCode -> do
             -- Create a temporary directory outside the timeout scope
