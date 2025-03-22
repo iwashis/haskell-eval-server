@@ -14,7 +14,7 @@ services:
           memory: "${MEMORY_LIMIT:-256M}"     # Limit to 256MB of RAM
     restart: unless-stopped
     security_opt:
-      - seccomp=haskell-seccomp.json # Using unconfined instead of default profile
+      - seccomp=haskell-seccomp.json 
       - no-new-privileges:true
     # Additional security measures
     cap_drop:
@@ -23,5 +23,5 @@ services:
       - NET_BIND_SERVICE   # Only add capability to bind to ports
     # Use only tmpfs instead of both volume and tmpfs
     tmpfs:
-      - /tmp:size=${TMP_SIZE:-256M},exec,mode=1777
+      - /tmp:size=${TMP_SIZE:-256M},exec
     working_dir: /opt/haskell-eval-server
