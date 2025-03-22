@@ -14,7 +14,7 @@ services:
           memory: "${MEMORY_LIMIT:-256M}"     # Limit to 256MB of RAM
     restart: unless-stopped
     security_opt:
-      - seccomp=unconfined    # Using unconfined instead of default profile
+      - seccomp= ./haskell-seccomp.json # Using unconfined instead of default profile
       - no-new-privileges:true
     # Additional security measures
     cap_drop:

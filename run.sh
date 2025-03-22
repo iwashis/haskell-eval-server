@@ -14,6 +14,12 @@ if ! command -v docker-compose &> /dev/null; then
     exit 1
 fi
 
+# Check if the seccomp profile exists
+if [ ! -f "./haskell-seccomp.json" ]; then
+    echo -e "${RED}Error: seccomp profile not found.${NC}"
+    exit 1
+fi
+
 # Build and start the container
 echo -e "${YELLOW}Building and starting the Haskell evaluation server...${NC}"
 docker-compose build && docker-compose up -d
