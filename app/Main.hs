@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (SomeException, bracket, catch)
+import Control.Exception (SomeException, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
 import FileSecurityValidator (validateImports, validateInputSize, validateNoFileOps, sanitizeToAsciiOnly)
@@ -11,7 +11,7 @@ import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Exit (ExitCode (..))
 import System.FilePath (combine)
-import System.IO (IOMode (WriteMode), hClose, hSetEncoding, openFile, stderr, utf8)
+import System.IO (stderr)
 import Data.Text.IO (hPutStrLn)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process
@@ -131,13 +131,10 @@ evaluateWithGHC code = do
 
                 _ <- system $ "chmod +x " ++ wrapperScript
 
-                -- Print the file content for debugging
-                fileContent <- TIO.readFile filePath
                 TIO.putStrLn fileContent
 
                 -- Only apply timeout to the actual evaluation, not to the directory creation or cleanup
                 evalResult <- timeout evaluationTimeout $ do
-                    scriptContent <- TIO.readFile wrapperScript
                     TIO.putStrLn "Running wrapper script: "
                     TIO.putStrLn scriptContent
                     -- Use shell command instead of createProcess

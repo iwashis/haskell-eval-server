@@ -6,6 +6,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
+import Data.Char (isAscii)
 
 maxInputSize :: Int
 maxInputSize = 1024 * 1024
@@ -145,5 +146,3 @@ validateImports code =
 -- Function to remove all non-ASCII characters
 sanitizeToAsciiOnly :: T.Text -> T.Text
 sanitizeToAsciiOnly = T.filter isAscii
-  where
-    isAscii c = fromEnum c <= 127
