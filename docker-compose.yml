@@ -10,8 +10,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${CPU_LIMIT:-1.0}"     # Limit to 50% of a CPU core
-          memory: "${MEMORY_LIMIT:-512M}"     # Limit to 256MB of RAM
+          cpus: "${CPU_LIMIT:-1.0}"
+          memory: "${MEMORY_LIMIT:-512M}" 
     restart: unless-stopped
     security_opt:
       - seccomp=haskell-seccomp.json 

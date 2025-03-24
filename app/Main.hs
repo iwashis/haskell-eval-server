@@ -163,13 +163,13 @@ evaluateWithGHC code = do
 
     hasMainDefinition :: T.Text -> Bool
     hasMainDefinition c = 
-      let lines = T.lines c
+      let l = T.lines c
           -- Look for lines that define main (with common patterns)
           isMainDef line = 
             (T.isPrefixOf (T.pack "main ") (T.stripStart line) && T.isInfixOf (T.pack "=") line) ||
             T.isPrefixOf (T.pack "main::") (T.stripStart line) ||
             T.isPrefixOf (T.pack "main :: ") (T.stripStart line)
-      in any isMainDef lines
+      in any isMainDef l
 
     -- Function to ensure code has a main definition
     ensureMainExists :: T.Text -> T.Text
