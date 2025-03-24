@@ -23,7 +23,6 @@ source-repository head
 library
   exposed-modules:
       FileSecurityValidator
-      Lib
   other-modules:
       Paths_haskell_eval_server
   autogen-modules:
