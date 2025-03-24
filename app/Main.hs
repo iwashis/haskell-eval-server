@@ -117,8 +117,8 @@ evaluateWithGHC code = do
                          -- Basic execution with GHC security flags
                         hPutStrLn handle $ "cd " ++ tempDir
                         hPutStrLn handle "exec runghc \\"
-                        -- hPutStrLn handle "  --ghc-arg=-fpackage-trust \\"  -- Trust only core packages
-                        -- hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
+                        hPutStrLn handle "  --ghc-arg=-fpackage-trust \\"  -- Trust only core packages
+                        hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
                         hPutStrLn handle "  --ghc-arg=-dcore-lint \\"  -- Extra checking
                         hPutStrLn handle $ "  " ++ filePath
                     )
