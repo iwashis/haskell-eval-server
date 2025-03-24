@@ -81,6 +81,7 @@ test-suite haskell-eval-server-test
   main-is: Spec.hs
   other-modules:
       Security.SecuritySpec
+      Unit.ValidatorSpec
       Paths_haskell_eval_server
   autogen-modules:
       Paths_haskell_eval_server

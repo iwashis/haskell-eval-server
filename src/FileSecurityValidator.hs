@@ -1,11 +1,11 @@
 module FileSecurityValidator (validateNoFileOps, validateInputSize, validateImports, sanitizeToAsciiOnly) where
 
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
+import Data.Char (isAlphaNum, isAscii)
 import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
-import Data.Char (isAscii, isAlphaNum)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 maxInputSize :: Int
 maxInputSize = 1024 * 1024
@@ -31,45 +31,47 @@ hasFileOperation line =
 
 -- List of patterns that indicate file operations
 fileOperationPatterns :: [T.Text]
-fileOperationPatterns = map T.pack
-    [ -- File IO functions
-      "readFile"
-    , "writeFile"
-    , "appendFile"
-    , "withFile"
-    , "openFile"
-    , "openBinaryFile"
-    , "hGetContents"
-    , "hPutStr"
-    , "hPutStrLn"
-    , "hPrint"
-    , "hClose"
-    , "IOMode"
-    , "ReadMode"
-    , "WriteMode"
-    , "AppendMode"
-    , "ReadWriteMode"
-    , "openTempFile"
-    , -- Directory operations
-      "createDirectory"
-    , "removeFile"
-    , "removeDirectory"
-    , "renameFile"
-    , "renameDirectory"
-    , "getDirectoryContents"
-    , "doesFileExist"
-    , "doesDirectoryExist"
-    , "getCurrentDirectory"
-    , "setCurrentDirectory"
-    , "withCurrentDirectory"
-    , -- Import statements for file/IO modules
-      "import System.IO"
-    , "import qualified System.IO"
-    , "import System.Directory"
-    , "import qualified System.Directory"
-    , "import Data.IORef"
-    , "import qualified Data.IORef"
-    ]
+fileOperationPatterns =
+    map
+        T.pack
+        [ -- File IO functions
+          "readFile"
+        , "writeFile"
+        , "appendFile"
+        , "withFile"
+        , "openFile"
+        , "openBinaryFile"
+        , "hGetContents"
+        , "hPutStr"
+        , "hPutStrLn"
+        , "hPrint"
+        , "hClose"
+        , "IOMode"
+        , "ReadMode"
+        , "WriteMode"
+        , "AppendMode"
+        , "ReadWriteMode"
+        , "openTempFile"
+        , -- Directory operations
+          "createDirectory"
+        , "removeFile"
+        , "removeDirectory"
+        , "renameFile"
+        , "renameDirectory"
+        , "getDirectoryContents"
+        , "doesFileExist"
+        , "doesDirectoryExist"
+        , "getCurrentDirectory"
+        , "setCurrentDirectory"
+        , "withCurrentDirectory"
+        , -- Import statements for file/IO modules
+          "import System.IO"
+        , "import qualified System.IO"
+        , "import System.Directory"
+        , "import qualified System.Directory"
+        , "import Data.IORef"
+        , "import qualified Data.IORef"
+        ]
 
 -- Check if a token appears in a string (with word boundaries)
 isTokenIn :: T.Text -> T.Text -> Bool
@@ -94,38 +96,40 @@ validateInputSize code
 
 -- Whitelist of allowed modules
 allowedModules :: [T.Text]
-allowedModules = map T.pack
-    [ -- Basic Prelude modules
-      "Prelude"
-    , "Data.List"
-    , "Data.Maybe"
-    , "Data.Char"
-    , "Data.Either"
-    , "Data.Tuple"
-    , "Data.Function"
-    , "Data.Ord"
-    , "Control.Applicative"
-    , "Control.Monad"
-    , "Text.Show"
-    , "Data.String"
-    , "Data.Monoid"
-    , -- Useful data structures
-      "Data.Map"
-    , "Data.Set"
-    , "Data.Sequence"
-    , "Data.Array"
-    , "Data.IntMap"
-    , "Data.IntSet"
-    , "Data.Tree"
-    , -- Text processing
-      "Data.Text"
-    , "Data.ByteString"
-    , -- Safe math operations
-      "Numeric"
-    , "Data.Complex"
-    , "Data.Fixed"
-    , "Data.Ratio"
-    ]
+allowedModules =
+    map
+        T.pack
+        [ -- Basic Prelude modules
+          "Prelude"
+        , "Data.List"
+        , "Data.Maybe"
+        , "Data.Char"
+        , "Data.Either"
+        , "Data.Tuple"
+        , "Data.Function"
+        , "Data.Ord"
+        , "Control.Applicative"
+        , "Control.Monad"
+        , "Text.Show"
+        , "Data.String"
+        , "Data.Monoid"
+        , -- Useful data structures
+          "Data.Map"
+        , "Data.Set"
+        , "Data.Sequence"
+        , "Data.Array"
+        , "Data.IntMap"
+        , "Data.IntSet"
+        , "Data.Tree"
+        , -- Text processing
+          "Data.Text"
+        , "Data.ByteString"
+        , -- Safe math operations
+          "Numeric"
+        , "Data.Complex"
+        , "Data.Fixed"
+        , "Data.Ratio"
+        ]
 
 -- Function to scan code for import statements and validate them
 validateImports :: T.Text -> Either String T.Text
@@ -133,8 +137,8 @@ validateImports code =
     let importLines = filter (T.isPrefixOf (T.pack "import ")) (T.lines code)
         extractModuleName line =
             case T.words line of
-                (imp:qual:modName:_) | imp == T.pack "import" && qual == T.pack "qualified" -> Just modName
-                (imp:modName:_) | imp == T.pack "import" -> Just modName
+                (imp : qual : modName : _) | imp == T.pack "import" && qual == T.pack "qualified" -> Just modName
+                (imp : modName : _) | imp == T.pack "import" -> Just modName
                 _ -> Nothing
         importedModules = mapMaybe extractModuleName importLines
         disallowedModules = filter (`notElem` allowedModules) importedModules

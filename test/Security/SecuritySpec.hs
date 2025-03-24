@@ -1,49 +1,53 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE  ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Security.SecuritySpec (spec) where
 
-import Test.Hspec
-import Control.Exception (try, SomeException, bracket)
+import Control.Concurrent (threadDelay)
+import Control.Exception (SomeException, bracket, try)
 import Control.Monad (forM_)
 import qualified Data.ByteString.Char8 as BS
+import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
-import Data.Maybe (isJust)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Directory (doesFileExist)
 import System.Exit (exitFailure, exitSuccess)
-import System.Process (callCommand, readProcessWithExitCode, readProcess)
 import System.IO (hPutStrLn, stderr)
-import Control.Concurrent (threadDelay)
+import System.Process (callCommand, readProcess, readProcessWithExitCode)
+import Test.Hspec
 
 -- | Test case definition
 data TestCase = TestCase
-    { testName :: String        -- Name of the test
+    { testName :: String -- Name of the test
     , testDescription :: String -- Description
-    , testCode :: T.Text        -- Haskell code to send
-    , expectedResult :: T.Text -> Bool  -- Function to validate result
-    , severity :: String        -- High, Medium, Low
+    , testCode :: T.Text -- Haskell code to send
+    , expectedResult :: T.Text -> Bool -- Function to validate result
+    , severity :: String -- High, Medium, Low
     }
 
--- | Connect to the server
--- -- New style:
+{- | Connect to the server
+-- New style:
+-}
 connectToServer :: String -> Int -> IO Socket
 connectToServer host port = do
     -- Get address info
-    addrInfos <- getAddrInfo 
-                 (Just (defaultHints {addrSocketType = Stream}))
-                 (Just host)
-                 (Just (show port))
-    
+    addrInfos <-
+        getAddrInfo
+            (Just (defaultHints{addrSocketType = Stream}))
+            (Just host)
+            (Just (show port))
+
     -- Create socket and connect
     case addrInfos of
-        (addrInfo:_) -> do
+        (addrInfo : _) -> do
             sock <- socket (addrFamily addrInfo) (addrSocketType addrInfo) (addrProtocol addrInfo)
             connect sock (addrAddress addrInfo)
             return sock
         [] -> error $ "Could not resolve address for " ++ host
+
 -- | Send code to server and get response
 sendCodeAndGetResponse :: String -> Int -> T.Text -> IO T.Text
 sendCodeAndGetResponse host port code = do
@@ -52,7 +56,7 @@ sendCodeAndGetResponse host port code = do
     -- Send code
     sendAll sock (TE.encodeUtf8 code)
     -- Receive response with timeout
-    response <- recvWithTimeout sock 10  -- 10 seconds timeout
+    response <- recvWithTimeout sock 10 -- 10 seconds timeout
     -- Close connection
     close sock
     -- Return response
@@ -68,16 +72,16 @@ recvWithTimeout sock timeoutSeconds = do
                     -- Try to receive data
                     result <- try $ recv sock 4096
                     case result of
-                        Left (e :: SomeException) -> 
+                        Left (e :: SomeException) ->
                             return (T.append accumBuffer (T.pack $ "\nError: " ++ show e))
                         Right chunk ->
                             if BS.null chunk
                                 then return accumBuffer
                                 else do
                                     -- Sleep a bit before trying again
-                                    threadDelay 100000  -- 100ms
+                                    threadDelay 100000 -- 100ms
                                     loop (T.append accumBuffer (TE.decodeUtf8 chunk)) (remainingTime - 0.1)
-    
+
     loop "" (fromIntegral timeoutSeconds)
 
 -- | Security test cases
@@ -178,7 +182,7 @@ securityTests =
         { testName = "Large Output"
         , testDescription = "Attempts to generate a very large output"
         , testCode = "main = putStrLn $ replicate (10*1024*1024) 'a'"
-        , expectedResult = \r -> "truncated" `T.isInfixOf` r || T.length r < 10*1024*1024
+        , expectedResult = \r -> "truncated" `T.isInfixOf` r || T.length r < 10 * 1024 * 1024
         , severity = "Medium"
         }
     ]
@@ -188,25 +192,27 @@ runTestCase :: String -> Int -> TestCase -> IO (Bool, String)
 runTestCase host port test = do
     putStrLn $ "\n-- Testing: " ++ testName test ++ " (" ++ severity test ++ ") --"
     putStrLn $ "Description: " ++ testDescription test
-    
+
     -- Send code to server
     result <- try $ sendCodeAndGetResponse host port (testCode test)
-    
+
     case result of
         Left (e :: SomeException) -> do
             let errorMsg = "Error: " ++ show e
             putStrLn errorMsg
             return (False, errorMsg)
-        
         Right response -> do
             let passed = expectedResult test response
-            putStrLn $ if passed 
-                then "✓ Test passed: Server properly blocked or restricted the operation"
-                else "✗ Test failed: Server did not properly handle the security test"
-            
-            putStrLn $ "Response: " ++ T.unpack (T.take 100 response) ++ 
-                       (if T.length response > 100 then "..." else "")
-            
+            putStrLn $
+                if passed
+                    then "✓ Test passed: Server properly blocked or restricted the operation"
+                    else "✗ Test failed: Server did not properly handle the security test"
+
+            putStrLn $
+                "Response: "
+                    ++ T.unpack (T.take 100 response)
+                    ++ (if T.length response > 100 then "..." else "")
+
             return (passed, T.unpack response)
 
 -- | Run all security tests
@@ -214,26 +220,30 @@ runAllTests :: String -> Int -> IO Bool
 runAllTests host port = do
     putStrLn $ "Running security test suite against " ++ host ++ ":" ++ show port
     putStrLn $ "Total test cases: " ++ show (length securityTests)
-    
+
     results <- mapM (runTestCase host port) securityTests
-    
+
     let totalTests = length results
         passedTests = length $ filter fst results
         failedTests = totalTests - passedTests
-    
+
     putStrLn "\n=== Security Test Results ==="
     putStrLn $ "Total tests: " ++ show totalTests
-    putStrLn $ "Passed: " ++ show passedTests ++ " (" ++ 
-               show (100 * passedTests `div` totalTests) ++ "%)"
+    putStrLn $
+        "Passed: "
+            ++ show passedTests
+            ++ " ("
+            ++ show (100 * passedTests `div` totalTests)
+            ++ "%)"
     putStrLn $ "Failed: " ++ show failedTests
-    
+
     -- Print failed tests if any
     when (failedTests > 0) $ do
         putStrLn "\nFailed tests:"
         let failedTestNames = [testName test | (test, (passed, _)) <- zip securityTests results, not passed]
         forM_ failedTestNames $ \name ->
             putStrLn $ "  - " ++ name
-    
+
     return (failedTests == 0)
 
 when :: Bool -> IO () -> IO ()
@@ -244,30 +254,29 @@ when False _ = return ()
 startDocker :: IO ()
 startDocker = do
     putStrLn "Starting Docker container with Haskell server..."
-    
+
     -- Run the run.sh script to build and start Docker container
     callCommand "./run.sh"
-    
+
     -- Give some time for the container to start
     putStrLn "Waiting for Docker container to initialize..."
-    threadDelay 5000000  -- Wait 5 seconds
-    
+    threadDelay 5000000 -- Wait 5 seconds
+
     -- Check if container is running
     (exitCode, stdout, _) <- readProcessWithExitCode "docker" ["ps", "--filter", "publish=8080", "--format", "{{.Names}}"] ""
-    
+
     if null stdout
         then error "Docker container failed to start or port 8080 is not exposed"
         else putStrLn $ "Docker container started: " ++ stdout
-
 
 -- | Stop the Docker container
 stopDocker :: IO ()
 stopDocker = do
     putStrLn "Stopping Docker container..."
-    
+
     -- Find container ID by port
     (_, containerId, _) <- readProcessWithExitCode "docker" ["ps", "--filter", "publish=8080", "--format", "{{.ID}}"] ""
-    
+
     if null containerId
         then putStrLn "No container to stop"
         else do
@@ -278,30 +287,32 @@ stopDocker = do
 
 host = "localhost"
 port = 8080
+
 -- | Main spec for hspec
 spec :: Spec
 spec = do
-  beforeAll_ startDocker $ afterAll_ stopDocker $
-    describe "Security Tests" $ do
-        it "should prevent file system access" $ do
-            result <- runTestCase host port (securityTests !! 0)
-            fst result `shouldBe` True
-        
-        it "should prevent system command execution" $ do
-            result <- runTestCase host port (securityTests !! 2)
-            fst result `shouldBe` True
-        
-        it "should prevent network access" $ do
-            result <- runTestCase host port (securityTests !! 3)
-            fst result `shouldBe` True
-        
-        it "should enforce resource limits" $ do
-            result <- runTestCase host port (securityTests !! 4)
-            fst result `shouldBe` True
-        
-        it "should prevent FFI usage" $ do
-            result <- runTestCase host port (securityTests !! 10)
-            fst result `shouldBe` True
+    beforeAll_ startDocker $
+        afterAll_ stopDocker $
+            describe "Security Tests" $ do
+                it "should prevent file system access" $ do
+                    result <- runTestCase host port (securityTests !! 0)
+                    fst result `shouldBe` True
+
+                it "should prevent system command execution" $ do
+                    result <- runTestCase host port (securityTests !! 2)
+                    fst result `shouldBe` True
+
+                it "should prevent network access" $ do
+                    result <- runTestCase host port (securityTests !! 3)
+                    fst result `shouldBe` True
+
+                it "should enforce resource limits" $ do
+                    result <- runTestCase host port (securityTests !! 4)
+                    fst result `shouldBe` True
+
+                it "should prevent FFI usage" $ do
+                    result <- runTestCase host port (securityTests !! 10)
+                    fst result `shouldBe` True
 
 -- | Main function for standalone execution
 main :: IO ()
@@ -311,16 +322,16 @@ main = do
     bracket startDocker (const stopDocker) $ \_ -> do
         -- Run security tests
         results <- mapM (runTestCase host port) securityTests
-        
+
         let totalTests = length results
             passedTests = length $ filter fst results
             failedTests = totalTests - passedTests
-        
+
         putStrLn "\n=== Security Test Results ==="
         putStrLn $ "Total tests: " ++ show totalTests
         putStrLn $ "Passed: " ++ show passedTests
         putStrLn $ "Failed: " ++ show failedTests
-        
+
         if failedTests == 0
             then do
                 putStrLn "All security tests passed!"

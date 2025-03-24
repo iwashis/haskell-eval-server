@@ -1,4 +1,4 @@
-{-# LANGUAGE  OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main (main) where
 
@@ -6,21 +6,21 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
-import FileSecurityValidator (validateImports, validateInputSize, validateNoFileOps, sanitizeToAsciiOnly)
+import Data.Char (isSpace)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Text.IO (hPutStrLn)
+import qualified Data.Text.IO as TIO
+import FileSecurityValidator (sanitizeToAsciiOnly, validateImports, validateInputSize, validateNoFileOps)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
+import System.Environment (setEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (combine)
 import System.IO (stderr)
-import Data.Text.IO (hPutStrLn)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process
 import System.Timeout (timeout)
-import Data.Char (isSpace)
-import System.Environment (setEnv)
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import qualified Data.Text.Encoding as TE
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
@@ -99,34 +99,36 @@ evaluateWithGHC code = do
                 let filePath = tempDir `combine` "eval.hs"
                 let wrapperScript = tempDir `combine` "run_eval.sh"
                 -- Use T.concat for complex string building instead of T.unlines with a list
-                let fileContent = T.unlines
-                      [ "module Main where"
-                      , ""
-                      , validCode
-                      , ""
-                      , "-- End of user code"
-                      ]
-                
+                let fileContent =
+                        T.unlines
+                            [ "module Main where"
+                            , ""
+                            , validCode
+                            , ""
+                            , "-- End of user code"
+                            ]
+
                 TIO.writeFile filePath fileContent
-                
+
                 -- Create the shell script content with proper escaping
-                let scriptContent = T.unlines
-                      [ "#!/bin/sh"
-                      , "# Set TMPDIR to control where GHC creates temporary files"
-                      , T.pack $ "export TMPDIR=\"" ++ tempDir ++ "\""
-                      , T.pack $ "cd " ++ tempDir
-                      , "ulimit -f 0       # No file creation (0 blocks)"
-                      , "ulimit -n 32      # Limited file descriptors" 
-                      , "ulimit -t 5       # CPU time limit (seconds)"
-                      , "# Run with no write access to anything except stdout/stderr"
-                      , "export LANG=C.UTF-8"
-                      , "export LC_ALL=C.UTF-8"
-                      , T.pack $ "cd " ++ tempDir
-                      , "exec runghc \\"
-                      , "  --ghc-arg=-fpackage-trust \\"
-                      , "  --ghc-arg=-dcore-lint \\"
-                      , T.pack $ "  " ++ filePath
-                      ]
+                let scriptContent =
+                        T.unlines
+                            [ "#!/bin/sh"
+                            , "# Set TMPDIR to control where GHC creates temporary files"
+                            , T.pack $ "export TMPDIR=\"" ++ tempDir ++ "\""
+                            , T.pack $ "cd " ++ tempDir
+                            , "ulimit -f 0       # No file creation (0 blocks)"
+                            , "ulimit -n 32      # Limited file descriptors"
+                            , "ulimit -t 5       # CPU time limit (seconds)"
+                            , "# Run with no write access to anything except stdout/stderr"
+                            , "export LANG=C.UTF-8"
+                            , "export LC_ALL=C.UTF-8"
+                            , T.pack $ "cd " ++ tempDir
+                            , "exec runghc \\"
+                            , "  --ghc-arg=-fpackage-trust \\"
+                            , "  --ghc-arg=-dcore-lint \\"
+                            , T.pack $ "  " ++ filePath
+                            ]
                 TIO.writeFile wrapperScript scriptContent
 
                 _ <- system $ "chmod +x " ++ wrapperScript
@@ -153,31 +155,30 @@ evaluateWithGHC code = do
     -- Filter out any line that starts with "module" and contains "where"
     cleanedCode = ensureMainExists $ filterOutModule code
 
-    filterOutModule c = T.unlines $ filter (not . isModuleDeclaration) $ T.lines c 
-    
+    filterOutModule c = T.unlines $ filter (not . isModuleDeclaration) $ T.lines c
+
     -- Function to identify module declaration lines
     isModuleDeclaration :: T.Text -> Bool
-    isModuleDeclaration line = 
-      let trimmed = T.dropWhile isSpace line
-      in T.isPrefixOf (T.pack "module ") trimmed && T.isInfixOf (T.pack " where") trimmed
+    isModuleDeclaration line =
+        let trimmed = T.dropWhile isSpace line
+         in T.isPrefixOf (T.pack "module ") trimmed && T.isInfixOf (T.pack " where") trimmed
 
     hasMainDefinition :: T.Text -> Bool
-    hasMainDefinition c = 
-      let l = T.lines c
-          -- Look for lines that define main (with common patterns)
-          isMainDef line = 
-            (T.isPrefixOf (T.pack "main ") (T.stripStart line) && T.isInfixOf (T.pack "=") line) ||
-            T.isPrefixOf (T.pack "main::") (T.stripStart line) ||
-            T.isPrefixOf (T.pack "main :: ") (T.stripStart line)
-      in any isMainDef l
+    hasMainDefinition c =
+        let l = T.lines c
+            -- Look for lines that define main (with common patterns)
+            isMainDef line =
+                (T.isPrefixOf (T.pack "main ") (T.stripStart line) && T.isInfixOf (T.pack "=") line)
+                    || T.isPrefixOf (T.pack "main::") (T.stripStart line)
+                    || T.isPrefixOf (T.pack "main :: ") (T.stripStart line)
+         in any isMainDef l
 
     -- Function to ensure code has a main definition
     ensureMainExists :: T.Text -> T.Text
     ensureMainExists c =
-      if hasMainDefinition c
-      then c
-      else T.append c (T.pack "\n\nmain :: IO ()\nmain = putStrLn \"No main implemented\"\n")
-
+        if hasMainDefinition c
+            then c
+            else T.append c (T.pack "\n\nmain :: IO ()\nmain = putStrLn \"No main implemented\"\n")
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
