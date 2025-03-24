@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Pre-commit hook to run fourmolu on Haskell files
+
+set -e
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}Running fourmolu formatter on Haskell files...${NC}"
+
+# Check if fourmolu is installed
+if ! command -v fourmolu &> /dev/null; then
+    echo -e "${RED}Error: fourmolu is not installed.${NC}"
+    echo -e "Please install it with: ${YELLOW}stack install fourmolu${NC}"
+    exit 1
+fi
+
+# Find all Haskell files in app, src, and test directories
+HASKELL_FILES=$(find app src test -name "*.hs" 2>/dev/null || true)
+
+if [ -z "$HASKELL_FILES" ]; then
+    echo -e "${YELLOW}No Haskell files found in app, src, or test directories.${NC}"
+    exit 0
+fi
+
+# Format all Haskell files
+echo -e "${BLUE}Formatting the following files:${NC}"
+echo "$HASKELL_FILES"
+
+# Run fourmolu with your preferred options
+# You can adjust these options according to your preferences
+FOURMOLU_OPTS="--mode inplace --check-idempotence"
+
+# Format the files
+if fourmolu $FOURMOLU_OPTS $HASKELL_FILES; then
+    echo -e "${GREEN}All files formatted successfully.${NC}"
+    
+    # Add the formatted files back to the staging area
+    git add $HASKELL_FILES
+    
+    echo -e "${GREEN}Formatted files added to staging area.${NC}"
+    exit 0
+else
+    echo -e "${RED}Error: Fourmolu failed to format some files.${NC}"
+    exit 1
+fi
