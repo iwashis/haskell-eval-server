@@ -3,7 +3,7 @@
 module Security.SecuritySpec (spec) where
 
 import Test.Hspec
-import Control.Exception (try, SomeException)
+import Control.Exception (try, SomeException, bracket)
 import Control.Monad (forM_)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
@@ -14,7 +14,7 @@ import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Directory (doesFileExist)
 import System.Exit (exitFailure, exitSuccess)
-import System.Process (readProcessWithExitCode)
+import System.Process (callCommand, readProcessWithExitCode, readProcess)
 import System.IO (hPutStrLn, stderr)
 import Control.Concurrent (threadDelay)
 
@@ -240,43 +240,91 @@ when :: Bool -> IO () -> IO ()
 when True action = action
 when False _ = return ()
 
+-- | Start the server using the run.sh script
+startDocker :: IO ()
+startDocker = do
+    putStrLn "Starting Docker container with Haskell server..."
+    
+    -- Run the run.sh script to build and start Docker container
+    callCommand "./run.sh"
+    
+    -- Give some time for the container to start
+    putStrLn "Waiting for Docker container to initialize..."
+    threadDelay 5000000  -- Wait 5 seconds
+    
+    -- Check if container is running
+    (exitCode, stdout, _) <- readProcessWithExitCode "docker" ["ps", "--filter", "publish=8080", "--format", "{{.Names}}"] ""
+    
+    if null stdout
+        then error "Docker container failed to start or port 8080 is not exposed"
+        else putStrLn $ "Docker container started: " ++ stdout
+
+
+-- | Stop the Docker container
+stopDocker :: IO ()
+stopDocker = do
+    putStrLn "Stopping Docker container..."
+    
+    -- Find container ID by port
+    (_, containerId, _) <- readProcessWithExitCode "docker" ["ps", "--filter", "publish=8080", "--format", "{{.ID}}"] ""
+    
+    if null containerId
+        then putStrLn "No container to stop"
+        else do
+            -- Stop and remove the container
+            _ <- readProcess "docker" ["stop", containerId] ""
+            -- _ <- readProcess "docker" ["rm", containerId] ""
+            putStrLn "Docker container stopped"
+
+host = "localhost"
 port = 8080
 -- | Main spec for hspec
 spec :: Spec
 spec = do
+  beforeAll_ startDocker $ afterAll_ stopDocker $
     describe "Security Tests" $ do
         it "should prevent file system access" $ do
-            result <- runTestCase "localhost" port (securityTests !! 0)
+            result <- runTestCase host port (securityTests !! 0)
             fst result `shouldBe` True
         
         it "should prevent system command execution" $ do
-            result <- runTestCase "localhost" port (securityTests !! 2)
+            result <- runTestCase host port (securityTests !! 2)
             fst result `shouldBe` True
         
         it "should prevent network access" $ do
-            result <- runTestCase "localhost" port (securityTests !! 3)
+            result <- runTestCase host port (securityTests !! 3)
             fst result `shouldBe` True
         
         it "should enforce resource limits" $ do
-            result <- runTestCase "localhost" port (securityTests !! 4)
+            result <- runTestCase host port (securityTests !! 4)
             fst result `shouldBe` True
         
         it "should prevent FFI usage" $ do
-            result <- runTestCase "localhost" port (securityTests !! 10)
+            result <- runTestCase host port (securityTests !! 10)
             fst result `shouldBe` True
 
 -- | Main function for standalone execution
 main :: IO ()
 main = do
     putStrLn "Haskell Evaluation Server Security Test Suite"
-    
-    -- By default, use localhost:port
-    allPassed <- runAllTests "localhost" port 
-    
-    if allPassed
-        then do
-            putStrLn "All security tests passed!"
-            exitSuccess
-        else do
-            putStrLn "Some security tests failed. The server may have security vulnerabilities!"
-            exitFailure
+    -- Use bracket to ensure Docker container is stopped even if tests fail
+    bracket startDocker (const stopDocker) $ \_ -> do
+        -- Run security tests
+        results <- mapM (runTestCase host port) securityTests
+        
+        let totalTests = length results
+            passedTests = length $ filter fst results
+            failedTests = totalTests - passedTests
+        
+        putStrLn "\n=== Security Test Results ==="
+        putStrLn $ "Total tests: " ++ show totalTests
+        putStrLn $ "Passed: " ++ show passedTests
+        putStrLn $ "Failed: " ++ show failedTests
+        
+        if failedTests == 0
+            then do
+                putStrLn "All security tests passed!"
+                exitSuccess
+            else do
+                putStrLn "Some security tests failed!"
+                exitFailure
