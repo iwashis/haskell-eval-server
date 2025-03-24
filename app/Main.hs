@@ -151,13 +151,33 @@ evaluateWithGHC code = do
                     Just result -> return result
   where
     -- Filter out any line that starts with "module" and contains "where"
-    cleanedCode = T.unlines $ filter (not . isModuleDeclaration) $ T.lines code
+    cleanedCode = ensureMainExists $ filterOutModule code
+
+    filterOutModule c = T.unlines $ filter (not . isModuleDeclaration) $ T.lines c 
     
     -- Function to identify module declaration lines
     isModuleDeclaration :: T.Text -> Bool
     isModuleDeclaration line = 
       let trimmed = T.dropWhile isSpace line
       in T.isPrefixOf (T.pack "module ") trimmed && T.isInfixOf (T.pack " where") trimmed
+
+    hasMainDefinition :: T.Text -> Bool
+    hasMainDefinition c = 
+      let lines = T.lines c
+          -- Look for lines that define main (with common patterns)
+          isMainDef line = 
+            (T.isPrefixOf (T.pack "main ") (T.stripStart line) && T.isInfixOf (T.pack "=") line) ||
+            T.isPrefixOf (T.pack "main::") (T.stripStart line) ||
+            T.isPrefixOf (T.pack "main :: ") (T.stripStart line)
+      in any isMainDef lines
+
+    -- Function to ensure code has a main definition
+    ensureMainExists :: T.Text -> T.Text
+    ensureMainExists c =
+      if hasMainDefinition c
+      then c
+      else T.append c (T.pack "\n\nmain :: IO ()\nmain = putStrLn \"No main implemented\"\n")
+
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
