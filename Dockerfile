@@ -28,7 +28,6 @@ RUN stack config set system-ghc --global true
 COPY stack.yaml package.yaml ./
 COPY README.md ./
 
-RUN stack install fpackage-trust
 # Build dependencies
 RUN stack build --only-dependencies --system-ghc
 
@@ -72,7 +71,7 @@ RUN chown -R haskell-eval:haskell-eval /opt/haskell-eval-server && \
     chmod +x /opt/haskell-eval-server/haskell-eval-server
 
 # allow prelude to be trusted
-RUN fpackage-trust register --package base
+RUN ghc-pkg trust base
 
 # Switch to non-root user
 USER haskell-eval

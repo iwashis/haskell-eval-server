@@ -43,6 +43,7 @@ library
     , network
     , process
     , temporary
+    , text
     , time
   default-language: Haskell2010
 
@@ -69,5 +70,6 @@ executable haskell-eval-server-exe
     , network
     , process
     , temporary
+    , text
     , time
   default-language: Haskell2010

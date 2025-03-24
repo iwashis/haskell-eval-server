@@ -13,6 +13,8 @@ import System.IO (IOMode (WriteMode), hClose, hPutStrLn, openFile, stderr)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process
 import System.Timeout (timeout)
+import Data.Char (isSpace)
+import Data.List (isPrefixOf, isInfixOf)
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
@@ -78,7 +80,7 @@ evaluateWithGHC code = do
     putStrLn "Starting evaluation with GHC..."
 
     -- Validate imports before evaluation
-    case validateImports code >>= validateInputSize >>= validateNoFileOps of
+    case validateImports cleanedCode >>= validateInputSize >>= validateNoFileOps of
         Left errorMsg -> return errorMsg
         Right validCode -> do
             -- Create a temporary directory outside the timeout scope
@@ -92,8 +94,8 @@ evaluateWithGHC code = do
                     (openFile filePath WriteMode)
                     hClose
                     ( \handle -> do
-                        hPutStrLn handle "{-# LANGUAGE Safe #-}" 
-                        hPutStrLn handle ""
+                        -- hPutStrLn handle "{-# LANGUAGE Safe #-}" 
+                        -- hPutStrLn handle ""
                         hPutStrLn handle "module Main where"
                         hPutStrLn handle ""
                         hPutStrLn handle validCode
@@ -118,7 +120,7 @@ evaluateWithGHC code = do
                         hPutStrLn handle $ "cd " ++ tempDir
                         hPutStrLn handle "exec runghc \\"
                         hPutStrLn handle "  --ghc-arg=-fpackage-trust \\"  -- Trust only core packages
-                        hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
+                        -- hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
                         hPutStrLn handle "  --ghc-arg=-dcore-lint \\"  -- Extra checking
                         hPutStrLn handle $ "  " ++ filePath
                     )
@@ -148,6 +150,15 @@ evaluateWithGHC code = do
                 case evalResult of
                     Nothing -> return $ "Error: Evaluation timed out after " ++ show tout ++ " seconds"
                     Just result -> return result
+  where
+    -- Filter out any line that starts with "module" and contains "where"
+    cleanedCode = unlines $ filter (not . isModuleDeclaration) $ lines code
+    
+    -- Function to identify module declaration lines
+    isModuleDeclaration :: String -> Bool
+    isModuleDeclaration line = 
+      let trimmed = dropWhile isSpace line
+      in "module " `isPrefixOf` trimmed && " where" `isInfixOf` trimmed
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()

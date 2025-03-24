@@ -107,6 +107,7 @@ allowedModules =
     , "Control.Monad"
     , "Text.Show"
     , "Data.String"
+    , "Data.Monoid"
     , -- Useful data structures
       "Data.Map"
     , "Data.Set"
