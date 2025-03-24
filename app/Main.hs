@@ -1,20 +1,26 @@
+{-# LANGUAGE  OverloadedStrings #-}
+
 module Main (main) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, bracket, catch)
 import Control.Monad (forever)
 import qualified Data.ByteString.Char8 as BS
-import FileSecurityValidator (validateImports, validateInputSize, validateNoFileOps)
+import FileSecurityValidator (validateImports, validateInputSize, validateNoFileOps, sanitizeToAsciiOnly)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Exit (ExitCode (..))
 import System.FilePath (combine)
-import System.IO (IOMode (WriteMode), hClose, hPutStrLn, openFile, stderr)
+import System.IO (IOMode (WriteMode), hClose, hSetEncoding, openFile, stderr, utf8)
+import Data.Text.IO (hPutStrLn)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process
 import System.Timeout (timeout)
 import Data.Char (isSpace)
-import Data.List (isPrefixOf, isInfixOf)
+import System.Environment (setEnv)
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import qualified Data.Text.Encoding as TE
 
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
@@ -54,10 +60,11 @@ handleConnection conn = do
     if BS.null msg
         then return ()
         else do
-            let haskellCode = BS.unpack msg
+            let decodedText = TE.decodeUtf8 msg
+            let haskellCode = sanitizeToAsciiOnly decodedText
             putStrLn "Received code for evaluation:"
             putStrLn "----------------------------------------"
-            putStrLn haskellCode
+            print haskellCode
             putStrLn "----------------------------------------"
 
             -- Evaluate the Haskell code using GHC directly (not hint)
@@ -75,9 +82,12 @@ handleConnection conn = do
             close conn
 
 -- Modified evaluateWithGHC function with robust cleanup handling
-evaluateWithGHC :: String -> IO String
+evaluateWithGHC :: T.Text -> IO String
 evaluateWithGHC code = do
     putStrLn "Starting evaluation with GHC..."
+
+    setEnv "LANG" "C.UTF-8"
+    setEnv "LC_ALL" "C.UTF-8"
 
     -- Validate imports before evaluation
     case validateImports cleanedCode >>= validateInputSize >>= validateNoFileOps of
@@ -88,56 +98,48 @@ evaluateWithGHC code = do
             withSystemTempDirectory "eval_dir" $ \tempDir -> do
                 let filePath = tempDir `combine` "eval.hs"
                 let wrapperScript = tempDir `combine` "run_eval.sh"
+                -- Use T.concat for complex string building instead of T.unlines with a list
+                let fileContent = T.unlines
+                      [ "module Main where"
+                      , ""
+                      , validCode
+                      , ""
+                      , "-- End of user code"
+                      ]
+                
+                TIO.writeFile filePath fileContent
+                
+                -- Create the shell script content with proper escaping
+                let scriptContent = T.unlines
+                      [ "#!/bin/sh"
+                      , "# Set TMPDIR to control where GHC creates temporary files"
+                      , T.pack $ "export TMPDIR=\"" ++ tempDir ++ "\""
+                      , T.pack $ "cd " ++ tempDir
+                      , "ulimit -f 0       # No file creation (0 blocks)"
+                      , "ulimit -n 32      # Limited file descriptors" 
+                      , "ulimit -t 5       # CPU time limit (seconds)"
+                      , "# Run with no write access to anything except stdout/stderr"
+                      , "export LANG=C.UTF-8"
+                      , "export LC_ALL=C.UTF-8"
+                      , T.pack $ "cd " ++ tempDir
+                      , "exec runghc \\"
+                      , "  --ghc-arg=-fpackage-trust \\"
+                      , "  --ghc-arg=-dcore-lint \\"
+                      , T.pack $ "  " ++ filePath
+                      ]
+                TIO.writeFile wrapperScript scriptContent
 
-                -- Create and write to the file
-                bracket
-                    (openFile filePath WriteMode)
-                    hClose
-                    ( \handle -> do
-                        -- hPutStrLn handle "{-# LANGUAGE Safe #-}" 
-                        -- hPutStrLn handle ""
-                        hPutStrLn handle "module Main where"
-                        hPutStrLn handle ""
-                        hPutStrLn handle validCode
-                        hPutStrLn handle ""
-                        hPutStrLn handle "-- End of user code"
-                    )
-                -- Create a wrapper script with restrictions
-                bracket
-                    (openFile wrapperScript WriteMode)
-                    hClose
-                    ( \handle -> do
-                        hPutStrLn handle "#!/bin/sh"
-                        hPutStrLn handle $ "# Set TMPDIR to control where GHC creates temporary files"
-                        hPutStrLn handle $ "export TMPDIR=\"" ++ tempDir ++ "\""
-                        hPutStrLn handle $ "cd " ++ tempDir
-                        -- Use ulimit to restrict resources
-                        hPutStrLn handle "ulimit -f 0       # No file creation (0 blocks)"
-                        hPutStrLn handle "ulimit -n 32      # Limited file descriptors"
-                        hPutStrLn handle "ulimit -t 5       # CPU time limit (seconds)"
-                        hPutStrLn handle "# Run with no write access to anything except stdout/stderr"
-                         -- Basic execution with GHC security flags
-                        hPutStrLn handle $ "cd " ++ tempDir
-                        hPutStrLn handle "exec runghc \\"
-                        hPutStrLn handle "  --ghc-arg=-fpackage-trust \\"  -- Trust only core packages
-                        -- hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
-                        hPutStrLn handle "  --ghc-arg=-dcore-lint \\"  -- Extra checking
-                        hPutStrLn handle $ "  " ++ filePath
-                    )
-
-                -- Make the wrapper script executable
                 _ <- system $ "chmod +x " ++ wrapperScript
 
                 -- Print the file content for debugging
-                fileContent <- readFile filePath
-                putStrLn "File content:"
-                putStrLn fileContent
+                fileContent <- TIO.readFile filePath
+                TIO.putStrLn fileContent
 
                 -- Only apply timeout to the actual evaluation, not to the directory creation or cleanup
                 evalResult <- timeout evaluationTimeout $ do
-                    scriptContent <- readFile wrapperScript
-                    putStrLn "Running wrapper script: "
-                    putStrLn scriptContent
+                    scriptContent <- TIO.readFile wrapperScript
+                    TIO.putStrLn "Running wrapper script: "
+                    TIO.putStrLn scriptContent
                     -- Use shell command instead of createProcess
                     (exitCode, stdout, stder) <- readProcessWithExitCode wrapperScript [] ""
 
@@ -152,17 +154,17 @@ evaluateWithGHC code = do
                     Just result -> return result
   where
     -- Filter out any line that starts with "module" and contains "where"
-    cleanedCode = unlines $ filter (not . isModuleDeclaration) $ lines code
+    cleanedCode = T.unlines $ filter (not . isModuleDeclaration) $ T.lines code
     
     -- Function to identify module declaration lines
-    isModuleDeclaration :: String -> Bool
+    isModuleDeclaration :: T.Text -> Bool
     isModuleDeclaration line = 
-      let trimmed = dropWhile isSpace line
-      in "module " `isPrefixOf` trimmed && " where" `isInfixOf` trimmed
+      let trimmed = T.dropWhile isSpace line
+      in T.isPrefixOf (T.pack "module ") trimmed && T.isInfixOf (T.pack " where") trimmed
 
 -- Handle any exceptions that occur during connection handling
 handleException :: Socket -> SockAddr -> SomeException -> IO ()
 handleException conn addr e = do
-    hPutStrLn stderr $ "Error handling connection from " ++ show addr ++ ": " ++ show e
+    hPutStrLn stderr $ T.append "Error handling connection from " $ T.append (T.pack $ show addr) $ T.append ": " (T.pack $ show e)
     sendAll conn $ BS.pack $ "Server error: " ++ show e
     close conn

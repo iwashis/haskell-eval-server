@@ -1,18 +1,19 @@
-module FileSecurityValidator (validateNoFileOps, validateInputSize, validateImports) where
+module FileSecurityValidator (validateNoFileOps, validateInputSize, validateImports, sanitizeToAsciiOnly) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isAlphaNum)
-
-import Data.List (intercalate, isPrefixOf)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
 
 maxInputSize :: Int
 maxInputSize = 1024 * 1024
 
 -- Check for file operations in the code
-validateNoFileOps :: String -> Either String String
+validateNoFileOps :: T.Text -> Either String T.Text
 validateNoFileOps code =
-    let codeLines = lines code
+    let codeLines = T.lines code
         -- Check for file operations in each line
         problematicLines = filter hasFileOperation codeLines
      in if null problematicLines
@@ -21,16 +22,16 @@ validateNoFileOps code =
                 Left $
                     "Error: File operations are not allowed.\n"
                         ++ "Found potential file operations in:\n"
-                        ++ unlines (map ("  - " ++) problematicLines)
+                        ++ unlines (map (\line -> "  - " ++ T.unpack line) problematicLines)
 
 -- Check if a line contains file operations
-hasFileOperation :: String -> Bool
+hasFileOperation :: T.Text -> Bool
 hasFileOperation line =
     any (`isTokenIn` line) fileOperationPatterns
 
 -- List of patterns that indicate file operations
-fileOperationPatterns :: [String]
-fileOperationPatterns =
+fileOperationPatterns :: [T.Text]
+fileOperationPatterns = map T.pack
     [ -- File IO functions
       "readFile"
     , "writeFile"
@@ -71,29 +72,29 @@ fileOperationPatterns =
     ]
 
 -- Check if a token appears in a string (with word boundaries)
-isTokenIn :: String -> String -> Bool
+isTokenIn :: T.Text -> T.Text -> Bool
 isTokenIn token str =
-    let paddedStr = ' ' : str ++ " " -- Add spaces to handle word boundaries
-        possiblePositions = [1 .. (length paddedStr - length token)]
+    let paddedStr = T.cons ' ' (T.snoc str ' ') -- Add spaces to handle word boundaries
+        possiblePositions = [1 .. (T.length paddedStr - T.length token)]
 
         -- Check if token exists at a position and is surrounded by non-alphanumeric chars
         isTokenAt pos =
-            take (length token) (drop pos paddedStr) == token
-                && not (isAlphaNum (paddedStr !! (pos - 1)))
-                && not (isAlphaNum (paddedStr !! (pos + length token)))
+            T.take (T.length token) (T.drop pos paddedStr) == token
+                && not (isAlphaNum (T.index paddedStr (pos - 1)))
+                && not (isAlphaNum (T.index paddedStr (pos + T.length token)))
      in any isTokenAt possiblePositions
 
--- Validate ByteString input size directly
-validateInputSize :: String -> Either String String
+-- Validate input size directly
+validateInputSize :: T.Text -> Either String T.Text
 validateInputSize code
     | inputSize > maxInputSize = Left $ "Error: Input size exceeds " ++ show maxInputSize ++ " bytes (current size: " ++ show inputSize ++ " bytes)."
     | otherwise = Right code
   where
-    inputSize = BS.length (BS.pack code)
+    inputSize = BS.length (TE.encodeUtf8 code)
 
 -- Whitelist of allowed modules
-allowedModules :: [String]
-allowedModules =
+allowedModules :: [T.Text]
+allowedModules = map T.pack
     [ -- Basic Prelude modules
       "Prelude"
     , "Data.List"
@@ -127,16 +128,22 @@ allowedModules =
     ]
 
 -- Function to scan code for import statements and validate them
-validateImports :: String -> Either String String
+validateImports :: T.Text -> Either String T.Text
 validateImports code =
-    let importLines = filter (isPrefixOf "import ") (lines code)
+    let importLines = filter (T.isPrefixOf (T.pack "import ")) (T.lines code)
         extractModuleName line =
-            case words line of
-                ("import" : "qualified" : modName : _) -> Just modName
-                ("import" : modName : _) -> Just modName
+            case T.words line of
+                (imp:qual:modName:_) | imp == T.pack "import" && qual == T.pack "qualified" -> Just modName
+                (imp:modName:_) | imp == T.pack "import" -> Just modName
                 _ -> Nothing
         importedModules = mapMaybe extractModuleName importLines
         disallowedModules = filter (`notElem` allowedModules) importedModules
      in if null disallowedModules
             then Right code
-            else Left $ "Error: Use of restricted modules: " ++ intercalate ", " disallowedModules
+            else Left $ "Error: Use of restricted modules: " ++ intercalate ", " (map T.unpack disallowedModules)
+
+-- Function to remove all non-ASCII characters
+sanitizeToAsciiOnly :: T.Text -> T.Text
+sanitizeToAsciiOnly = T.filter isAscii
+  where
+    isAscii c = fromEnum c <= 127
