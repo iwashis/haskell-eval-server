@@ -10,8 +10,8 @@ description:    Please see the README on GitHub at <https://github.com/githubuse
 homepage:       https://github.com/iwashis/haskell-eval-server#readme
 bug-reports:    https://github.com/iwashis/haskell-eval-server/issues
 author:         Tomasz Brengos
-maintainer:     example@example.com
-copyright:      2025 Author name here
+maintainer:     tomasz.brengos pw edu
+copyright:      2025 Tomasz Brengos
 license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
@@ -40,6 +40,7 @@ library
     , ghc
     , ghc-paths
     , hint >=0.9.0
+    , hspec
     , network
     , process
     , temporary
@@ -67,6 +68,38 @@ executable haskell-eval-server-exe
     , ghc-paths
     , haskell-eval-server
     , hint >=0.9.0
+    , hspec
+    , network
+    , process
+    , temporary
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite haskell-eval-server-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Security.SecuritySpec
+      Paths_haskell_eval_server
+  autogen-modules:
+      Paths_haskell_eval_server
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , ghc
+    , ghc-paths
+    , haskell-eval-server
+    , hint >=0.9.0
+    , hspec
     , network
     , process
     , temporary

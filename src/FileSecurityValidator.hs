@@ -1,12 +1,11 @@
 module FileSecurityValidator (validateNoFileOps, validateInputSize, validateImports, sanitizeToAsciiOnly) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isAlphaNum)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
-import Data.Char (isAscii)
+import Data.Char (isAscii, isAlphaNum)
 
 maxInputSize :: Int
 maxInputSize = 1024 * 1024

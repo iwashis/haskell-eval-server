@@ -3,8 +3,8 @@ version:             0.1.0.0
 github:              "iwashis/haskell-eval-server"
 license:             BSD-3-Clause
 author:              "Tomasz Brengos"
-maintainer:          "example@example.com"
-copyright:           "2025 Author name here"
+maintainer:          "tomasz.brengos pw edu"
+copyright:           "2025 Tomasz Brengos"
 
 
 # Metadata used when publishing your package
@@ -31,6 +31,7 @@ dependencies:
 - process
 - bytestring
 - text
+- hspec
 
 
 ghc-options:
@@ -57,3 +58,16 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - haskell-eval-server
+
+tests:
+  haskell-eval-server-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - haskell-eval-server
+    - hspec
+    - QuickCheck
