@@ -92,6 +92,8 @@ evaluateWithGHC code = do
                     (openFile filePath WriteMode)
                     hClose
                     ( \handle -> do
+                        hPutStrLn handle "{-# LANGUAGE Safe #-}" 
+                        hPutStrLn handle ""
                         hPutStrLn handle "module Main where"
                         hPutStrLn handle ""
                         hPutStrLn handle validCode
@@ -110,8 +112,15 @@ evaluateWithGHC code = do
                         -- Use ulimit to restrict resources
                         hPutStrLn handle "ulimit -f 0       # No file creation (0 blocks)"
                         hPutStrLn handle "ulimit -n 32      # Limited file descriptors"
+                        hPutStrLn handle "ulimit -t 5       # CPU time limit (seconds)"
                         hPutStrLn handle "# Run with no write access to anything except stdout/stderr"
-                        hPutStrLn handle $ "runghc " ++ filePath
+                         -- Basic execution with GHC security flags
+                        hPutStrLn handle $ "cd " ++ tempDir
+                        hPutStrLn handle "exec runghc \\"
+                        -- hPutStrLn handle "  --ghc-arg=-fpackage-trust \\"  -- Trust only core packages
+                        -- hPutStrLn handle "  --ghc-arg=-XSafe \\"  -- Enable Safe Haskell
+                        hPutStrLn handle "  --ghc-arg=-dcore-lint \\"  -- Extra checking
+                        hPutStrLn handle $ "  " ++ filePath
                     )
 
                 -- Make the wrapper script executable
