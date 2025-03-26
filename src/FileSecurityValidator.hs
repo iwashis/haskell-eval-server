@@ -24,11 +24,6 @@ validateNoFileOps code =
               ++ "Found potential file operations in:\n"
               ++ unlines (map (\line -> "  - " ++ T.unpack line) problematicLines)
 
--- Check if a line contains file operations
-hasFileOperation :: T.Text -> Bool
-hasFileOperation line =
-  any (`isTokenIn` line) fileOperationPatterns
-
 -- List of patterns that indicate file operations
 fileOperationPatterns :: [T.Text]
 fileOperationPatterns =
@@ -72,6 +67,71 @@ fileOperationPatterns =
     , "import Data.IORef"
     , "import qualified Data.IORef"
     ]
+
+-- Helper data types for code segment parsing
+data SegmentType = ActualCode | Comment | StringLiteral
+  deriving (Show, Eq)
+
+data CodeSegment = CodeSegment
+  { content :: T.Text
+  , segmentType :: SegmentType
+  }
+  deriving (Show)
+
+-- Check if a line contains file operations, accounting for comments and strings
+hasFileOperation :: T.Text -> Bool
+hasFileOperation line =
+  let
+    -- Parse the line to identify code vs comments vs string literals
+    parseCodeSegments :: T.Text -> [CodeSegment]
+    parseCodeSegments txt = parseSegments txt (CodeSegment T.empty ActualCode) []
+
+    -- Parser state machine
+    parseSegments :: T.Text -> CodeSegment -> [CodeSegment] -> [CodeSegment]
+    parseSegments txt currentSegment accum
+      | T.null txt = reverse (currentSegment : accum)
+      -- Handle start of line comment
+      | segmentType currentSegment /= StringLiteral
+          && T.isPrefixOf (T.pack "--") txt =
+          let (commentText, rest) = T.breakOn (T.pack "\n") txt
+              newComment = CodeSegment commentText Comment
+              newCurrent = CodeSegment (T.drop 1 rest) ActualCode
+           in if T.null rest
+                then reverse (newComment : currentSegment : accum)
+                else parseSegments (T.drop 1 rest) newCurrent (newComment : currentSegment : accum)
+      -- Handle string literals with escape sequences
+      | segmentType currentSegment == ActualCode && T.head txt == '"' =
+          parseSegments
+            (T.tail txt)
+            (CodeSegment T.empty StringLiteral)
+            (currentSegment : accum)
+      | segmentType currentSegment == StringLiteral && T.head txt == '\\' && T.length txt > 1 =
+          parseSegments
+            (T.drop 2 txt)
+            currentSegment
+            accum
+      | segmentType currentSegment == StringLiteral && T.head txt == '"' =
+          parseSegments
+            (T.tail txt)
+            (CodeSegment T.empty ActualCode)
+            (currentSegment : accum)
+      -- Continue current segment
+      | otherwise =
+          parseSegments
+            (T.tail txt)
+            ( CodeSegment
+                (T.append (content currentSegment) (T.singleton (T.head txt)))
+                (segmentType currentSegment)
+            )
+            accum
+
+    -- Extract only code segments (not comments or strings)
+    codeOnlySegments = filter (\seg -> segmentType seg == ActualCode) (parseCodeSegments line)
+
+    -- Check if any actual code segments contain file operations
+    hasFileOp = any (\seg -> any (`isTokenIn` content seg) fileOperationPatterns) codeOnlySegments
+   in
+    hasFileOp
 
 -- Check if a token appears in a string (with word boundaries)
 isTokenIn :: T.Text -> T.Text -> Bool
