@@ -7,15 +7,11 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, bracket, try)
 import Control.Monad (forM_)
 import qualified Data.ByteString.Char8 as BS
-import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified Data.Text.IO as TIO
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
-import System.Directory (doesFileExist)
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (hPutStrLn, stderr)
 import System.Process (callCommand, readProcess, readProcessWithExitCode)
 import Test.Hspec
 
