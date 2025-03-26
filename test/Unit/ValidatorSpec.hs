@@ -84,23 +84,23 @@ spec = do
           Left err -> "File operations are not allowed" `shouldSatisfy` (`isInfixOf` err)
           Right _ -> expectationFailure "Should have rejected file operations"
       --
-      -- it "detects file operations in function applications" $ do
-      --   case validateNoFileOps "main = do\n  contents <- readFile \"test.txt\"\n  putStrLn contents" of
-      --     Left err -> "File operations are not allowed" `shouldSatisfy` (`isInfixOf` err)
-      --     Right _ -> expectationFailure "Should have detected readFile"
+      it "detects file operations in function applications" $ do
+        case validateNoFileOps "main = do\n  contents <- readFile \"test.txt\"\n  putStrLn contents" of
+          Left err -> "File operations are not allowed" `shouldSatisfy` (`isInfixOf` err)
+          Right _ -> expectationFailure "Should have detected readFile"
 
-      -- it "detects file operations inside let/where bindings" $ do
-      --   case validateNoFileOps "main = let f = readFile \"test.txt\" in f >>= putStrLn" of
-      --     Left err -> "File operations are not allowed" `shouldSatisfy` (`isInfixOf` err)
-      --     Right _ -> expectationFailure "Should have detected readFile in let binding"
-      --
+      it "detects file operations inside let/where bindings" $ do
+        case validateNoFileOps "main = let f = readFile \"test.txt\" in f >>= putStrLn" of
+          Left err -> "File operations are not allowed" `shouldSatisfy` (`isInfixOf` err)
+          Right _ -> expectationFailure "Should have detected readFile in let binding"
+
       it "ignores file operations in comments" $ do
         validateNoFileOps "-- readFile \"test.txt\"\nmain = print \"Hello\""
           `shouldBe` Right "-- readFile \"test.txt\"\nmain = print \"Hello\""
 
--- it "ignores file operations in string literals" $ do
---   validateNoFileOps "main = print \"This is not a real readFile call\"" `shouldBe`
---     Right "main = print \"This is not a real readFile call\""
+      it "ignores file operations in string literals" $ do
+        validateNoFileOps "main = print \"This is not a real readFile call\""
+          `shouldBe` Right "main = print \"This is not a real readFile call\""
 
 -- Helper function for tests
 isRight :: Either a b -> Bool
