@@ -25,10 +25,10 @@ import System.Timeout (timeout)
 -- Maximum response size (to prevent memory exhaust attacks)
 maxResponseSize :: Int
 maxResponseSize = 1024 * 1024 -- 1 MB
--- Timeout in seconds:
 
+-- Timeout in seconds:
 tout :: Int
-tout = 10
+tout = 15
 
 -- timeout in microseconds:
 evaluationTimeout :: Int
